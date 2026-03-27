@@ -3,34 +3,37 @@
 ## Data Flow
 
 ```
-User Input
-    │
-    ▼
-intent/parser.py           ← LLM extracts structured Intent from natural language
-    │
-    ▼
-metadata/schema_reader.py  ← Reads table/column info from the data warehouse
-    │
-    ▼
-mart_design/designer.py    ← LLM proposes MartDesign (fact + dimension tables)
-    │
-    ├──► mart_design/sql_generator.py  ← Generates DDL/SQL from the design
-    │
-    └──► mcp/tools.py                  ← Exposes results as MCP tools to Claude
+User Input (text)
+      │
+      ▼
+intent/parser.py           ← LLM: extract structured Intent
+      │
+      ▼
+metadata/schema_reader.py  ← Read DuckDB table/column metadata
+      │
+      ▼
+mart_design/designer.py    ← LLM: propose MartDesign (fact + dimensions)
+      │
+      ├──► mart_design/sql_generator.py  ← Generate DDL
+      │
+      └──► mcp/tools.py                  ← Expose as MCP tool
 ```
 
 ## Key Models
 
 | Model | Location | Description |
 |-------|----------|-------------|
-| `Intent` | `intent/schema.py` | Parsed user intent |
-| `MartDesign` | `mart_design/schema.py` | Proposed mart structure |
-| `TableDefinition` | `mart_design/schema.py` | Single table in the mart |
+| `UserIntent` | `intent/schema.py` | Parsed user intent |
+| `SourceTable` | `metadata/schema.py` | Source DW table metadata |
+| `SourceColumn` | `metadata/schema.py` | Source DW column metadata |
+| `MartSpecification` | `mart_design/schema.py` | Complete mart design proposal |
+| `FactDefinition` | `mart_design/schema.py` | Fact table definition |
+| `DimensionDefinition` | `mart_design/schema.py` | Dimension table definition |
 
 ## MCP Integration
 
 The `mcp/server.py` exposes the following tools to Claude:
-- `parse_intent` — converts user text to a structured Intent
+- `parse_intent` — converts user text to a structured UserIntent
 - `get_schema` — retrieves DW schema for a given dataset
-- `propose_mart` — runs the full design pipeline and returns a MartDesign
-- `generate_sql` — turns a MartDesign into executable DDL
+- `propose_mart` — runs the full design pipeline and returns a MartSpecification
+- `generate_sql` — turns a MartSpecification into executable DDL
