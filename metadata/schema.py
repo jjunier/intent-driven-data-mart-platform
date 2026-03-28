@@ -22,7 +22,7 @@ class SourceTable(BaseModel):
     """
 
     name: str
-    schema: str = "main"
+    schema_name: str = "main"
     columns: list[SourceColumn]
     row_count: int | None = None
     description: str = ""
