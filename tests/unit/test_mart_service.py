@@ -163,7 +163,7 @@ class TestProposeMartFromRequest:
 
     def test_parse_intent_called_with_user_request(self, sample_intent, sample_tables, sample_spec):
         _, mock_parse, *_ = _run_service(sample_intent, sample_tables, sample_spec)
-        mock_parse.assert_called_once_with("Show me monthly sales by customer.")
+        mock_parse.assert_called_once_with("Show me monthly sales by customer.", client=None)
 
     def test_connector_opened_with_database_path_and_read_only(
         self, sample_intent, sample_tables, sample_spec
@@ -179,7 +179,7 @@ class TestProposeMartFromRequest:
         self, sample_intent, sample_tables, sample_spec
     ):
         _, _, _, _, _, mock_propose, _ = _run_service(sample_intent, sample_tables, sample_spec)
-        mock_propose.assert_called_once_with(sample_intent, sample_tables)
+        mock_propose.assert_called_once_with(sample_intent, sample_tables, client=None)
 
     def test_generate_sql_called_with_spec(self, sample_intent, sample_tables, sample_spec):
         _, _, _, _, _, mock_propose, mock_gen_sql = _run_service(

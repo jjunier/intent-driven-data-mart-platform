@@ -179,6 +179,7 @@ _PROPOSE_MART_TOOL: anthropic.types.ToolParam = {
 def propose_mart(
     intent: UserIntent,
     source_tables: list[SourceTable],
+    client: anthropic.Anthropic | None = None,
 ) -> MartSpecification:
     """Propose a data mart design grounded in *intent* and *source_tables*.
 
@@ -191,6 +192,10 @@ def propose_mart(
         Structured user intent produced by ``intent.parser.parse_intent``.
     source_tables:
         Table and column metadata read from the data warehouse.
+    client:
+        An ``anthropic.Anthropic`` instance to use for the API call.  When
+        ``None`` (default) a client is created from ``settings.anthropic_api_key``.
+        Pass an explicit client in tests or when sharing a client across calls.
 
     Returns
     -------
@@ -202,7 +207,8 @@ def propose_mart(
     ValueError
         If the model returns no ``tool_use`` block.
     """
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    if client is None:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     user_message = _build_user_message(intent, source_tables)
 

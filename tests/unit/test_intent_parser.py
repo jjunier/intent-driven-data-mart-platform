@@ -8,7 +8,7 @@ objects.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -79,31 +79,31 @@ _MINIMAL_INPUTS = {
 }
 
 
-def _patch_client(tool_inputs: dict):
-    """Return a context manager that patches ``anthropic.Anthropic`` so that
-    ``messages.create`` returns a fake response containing *tool_inputs*."""
+def _make_mock_client(tool_inputs: dict) -> MagicMock:
+    """Return a mock ``anthropic.Anthropic`` client whose ``messages.create``
+    returns a fake response containing *tool_inputs* in a tool_use block."""
     mock_client = MagicMock()
     mock_client.messages.create.return_value = _make_response(
         _make_tool_use_block(tool_inputs)
     )
-    return patch("intent.parser.anthropic.Anthropic", return_value=mock_client)
+    return mock_client
 
 
 class TestParseIntent:
     def test_returns_user_intent_instance(self):
-        with _patch_client(_FULL_INPUTS):
-            result = parse_intent("Analyze monthly online sales by category and region.")
+        result = parse_intent(
+            "Analyze monthly online sales by category and region.",
+            client=_make_mock_client(_FULL_INPUTS),
+        )
         assert isinstance(result, UserIntent)
 
     def test_raw_input_preserved(self):
         raw = "Show me inventory stock by warehouse."
-        with _patch_client(_MINIMAL_INPUTS):
-            result = parse_intent(raw)
+        result = parse_intent(raw, client=_make_mock_client(_MINIMAL_INPUTS))
         assert result.raw_input == raw
 
     def test_full_fields_mapped_correctly(self):
-        with _patch_client(_FULL_INPUTS):
-            result = parse_intent("some request")
+        result = parse_intent("some request", client=_make_mock_client(_FULL_INPUTS))
         assert result.subject_area == "sales"
         assert result.required_metrics == ["total_revenue", "order_count"]
         assert result.required_dimensions == ["product_category", "region"]
@@ -112,28 +112,18 @@ class TestParseIntent:
         assert result.notes == "Online channel only."
 
     def test_optional_fields_use_defaults_when_absent(self):
-        with _patch_client(_MINIMAL_INPUTS):
-            result = parse_intent("some request")
+        result = parse_intent("some request", client=_make_mock_client(_MINIMAL_INPUTS))
         assert result.filters == {}
         assert result.time_granularity == "daily"
         assert result.notes == ""
 
     def test_api_called_once(self):
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_response(
-            _make_tool_use_block(_FULL_INPUTS)
-        )
-        with patch("intent.parser.anthropic.Anthropic", return_value=mock_client):
-            parse_intent("any input")
+        mock_client = _make_mock_client(_FULL_INPUTS)
+        parse_intent("any input", client=mock_client)
         mock_client.messages.create.assert_called_once()
 
     def test_tool_choice_forces_extract_intent(self):
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_response(
-            _make_tool_use_block(_FULL_INPUTS)
-        )
-        with patch("intent.parser.anthropic.Anthropic", return_value=mock_client):
-            parse_intent("any input")
-
+        mock_client = _make_mock_client(_FULL_INPUTS)
+        parse_intent("any input", client=mock_client)
         call_kwargs = mock_client.messages.create.call_args.kwargs
         assert call_kwargs["tool_choice"] == {"type": "tool", "name": "extract_intent"}
