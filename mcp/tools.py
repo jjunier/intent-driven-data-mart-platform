@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from application.mart_service import propose_mart_from_request
 from mart_design.schema import MartSpecification
+from metadata.reader import DuckDBSchemaReader
 
 
 # ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ def run_propose_mart(user_request: str, database_path: str) -> str:
         A Markdown report with the mart name, fact/dimension table summaries,
         rationale, and ready-to-run ``CREATE TABLE`` SQL.
     """
-    spec = propose_mart_from_request(user_request, database_path)
+    spec = propose_mart_from_request(user_request, DuckDBSchemaReader(database_path))
     return _format_response(spec)
 
 
