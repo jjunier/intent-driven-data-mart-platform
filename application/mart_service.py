@@ -13,6 +13,7 @@ import anthropic
 from intent.parser import parse_intent
 from intent.validator import validate_intent
 from mart_design.designer import propose_mart
+from mart_design.validator import validate_mart_spec
 from mart_design.schema import MartSpecification
 from mart_design.sql_generator import generate_sql
 from metadata.connector import DuckDBConnector
@@ -61,5 +62,6 @@ def propose_mart_from_request(
         source_tables = read_tables(conn)
 
     spec = propose_mart(intent, source_tables, client=client)
+    validate_mart_spec(spec)
     sql = generate_sql(spec)
     return spec.model_copy(update={"generated_sql": sql})
