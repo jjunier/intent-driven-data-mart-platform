@@ -83,7 +83,10 @@ _EXTRACT_INTENT_TOOL: anthropic.types.ToolParam = {
 # ---------------------------------------------------------------------------
 
 
-def parse_intent(raw_input: str) -> UserIntent:
+def parse_intent(
+    raw_input: str,
+    client: anthropic.Anthropic | None = None,
+) -> UserIntent:
     """Parse a natural language data mart request into a structured ``UserIntent``.
 
     Calls the Claude API and forces the ``extract_intent`` tool so that the
@@ -93,6 +96,10 @@ def parse_intent(raw_input: str) -> UserIntent:
     ----------
     raw_input:
         Free-form text describing what the user wants to analyse.
+    client:
+        An ``anthropic.Anthropic`` instance to use for the API call.  When
+        ``None`` (default) a client is created from ``settings.anthropic_api_key``.
+        Pass an explicit client in tests or when sharing a client across calls.
 
     Returns
     -------
@@ -105,7 +112,8 @@ def parse_intent(raw_input: str) -> UserIntent:
         If the model returns no ``tool_use`` block (should not happen with
         ``tool_choice`` set to force the tool).
     """
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    if client is None:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     response = client.messages.create(
         model=_MODEL,
