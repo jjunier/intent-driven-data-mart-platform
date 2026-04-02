@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -122,12 +122,14 @@ def _make_response(*blocks, stop_reason: str = "tool_use") -> SimpleNamespace:
     return SimpleNamespace(content=list(blocks), stop_reason=stop_reason)
 
 
-def _patch_client(tool_inputs: dict):
+def _make_mock_client(tool_inputs: dict) -> MagicMock:
+    """Return a mock ``anthropic.Anthropic`` client whose ``messages.create``
+    returns a fake response containing *tool_inputs* in a tool_use block."""
     mock_client = MagicMock()
     mock_client.messages.create.return_value = _make_response(
         _make_tool_use_block(tool_inputs)
     )
-    return patch("mart_design.designer.anthropic.Anthropic", return_value=mock_client)
+    return mock_client
 
 
 # ---------------------------------------------------------------------------
@@ -193,68 +195,52 @@ class TestBuildUserMessage:
 
 class TestProposeMart:
     def test_returns_mart_specification(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert isinstance(result, MartSpecification)
 
     def test_intent_is_preserved(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert result.intent == sample_intent
 
     def test_source_tables_are_preserved(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert result.source_tables == sample_tables
 
     def test_mart_name_mapped(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert result.mart_name == "sales_mart"
 
     def test_fact_table_populated(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert len(result.fact_tables) == 1
         fact = result.fact_tables[0]
         assert fact.name == "fact_orders"
         assert len(fact.metrics) == 2
 
     def test_dimension_table_populated(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert len(result.dimension_tables) == 1
         dim = result.dimension_tables[0]
         assert dim.name == "dim_customer"
         assert dim.key_column == "customer_id"
 
     def test_metric_aggregation_enum(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         from mart_design.schema import AggregationType
         revenue_metric = result.fact_tables[0].metrics[0]
         assert revenue_metric.aggregation == AggregationType.sum
 
     def test_generated_sql_is_empty_by_default(self, sample_intent, sample_tables, sample_tool_inputs):
-        with _patch_client(sample_tool_inputs):
-            result = propose_mart(sample_intent, sample_tables)
+        result = propose_mart(sample_intent, sample_tables, client=_make_mock_client(sample_tool_inputs))
         assert result.generated_sql == ""
 
     def test_api_called_once(self, sample_intent, sample_tables, sample_tool_inputs):
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_response(
-            _make_tool_use_block(sample_tool_inputs)
-        )
-        with patch("mart_design.designer.anthropic.Anthropic", return_value=mock_client):
-            propose_mart(sample_intent, sample_tables)
+        mock_client = _make_mock_client(sample_tool_inputs)
+        propose_mart(sample_intent, sample_tables, client=mock_client)
         mock_client.messages.create.assert_called_once()
 
     def test_tool_choice_forces_propose_mart(self, sample_intent, sample_tables, sample_tool_inputs):
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _make_response(
-            _make_tool_use_block(sample_tool_inputs)
-        )
-        with patch("mart_design.designer.anthropic.Anthropic", return_value=mock_client):
-            propose_mart(sample_intent, sample_tables)
+        mock_client = _make_mock_client(sample_tool_inputs)
+        propose_mart(sample_intent, sample_tables, client=mock_client)
         call_kwargs = mock_client.messages.create.call_args.kwargs
         assert call_kwargs["tool_choice"] == {"type": "tool", "name": "propose_mart"}

@@ -1,13 +1,13 @@
-"""Unit tests for mcp.tools using mocked pipeline components.
+"""Unit tests for mcp.tools.
 
-All tests run without network access or a real DuckDB file — every external
-dependency (intent parser, connector, schema reader, mart designer, SQL
-generator) is replaced with a MagicMock.
+run_propose_mart is tested by mocking the application service layer as a
+single unit — internal pipeline steps are covered in test_mart_service.py.
+_format_response is tested directly against a fixture MartSpecification.
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch, ANY
 
 import pytest
 
@@ -20,6 +20,7 @@ from mart_design.schema import (
     MetricDefinition,
 )
 from mcp.tools import _format_response, run_propose_mart
+from metadata.reader import DuckDBSchemaReader
 from metadata.schema import SourceColumn, SourceTable
 
 
@@ -104,78 +105,31 @@ def sample_spec(sample_intent, sample_tables) -> MartSpecification:
 
 
 # ---------------------------------------------------------------------------
-# Helpers — patch context manager
-# ---------------------------------------------------------------------------
-
-
-def _make_pipeline_patches(intent, tables, spec, sql):
-    """Return a dict of patch targets to consistent mock return values."""
-    return {
-        "mcp.tools.parse_intent": MagicMock(return_value=intent),
-        "mcp.tools.read_tables": MagicMock(return_value=tables),
-        "mcp.tools._propose_mart": MagicMock(return_value=spec),
-        "mcp.tools.generate_sql": MagicMock(return_value=sql),
-    }
-
-
-# ---------------------------------------------------------------------------
-# run_propose_mart — pipeline orchestration
+# run_propose_mart — delegates to application service, formats as Markdown
 # ---------------------------------------------------------------------------
 
 
 class TestRunProposeMart:
-    def _run(self, sample_intent, sample_tables, sample_spec):
-        sql = "CREATE TABLE dim_customer (customer_id INTEGER PRIMARY KEY);"
-        patches = _make_pipeline_patches(sample_intent, sample_tables, sample_spec, sql)
-
-        mock_conn = MagicMock()
-        mock_connector = MagicMock()
-        mock_connector.__enter__ = MagicMock(return_value=mock_conn)
-        mock_connector.__exit__ = MagicMock(return_value=False)
-
-        with (
-            patch("mcp.tools.parse_intent", patches["mcp.tools.parse_intent"]),
-            patch("mcp.tools.read_tables", patches["mcp.tools.read_tables"]),
-            patch("mcp.tools._propose_mart", patches["mcp.tools._propose_mart"]),
-            patch("mcp.tools.generate_sql", patches["mcp.tools.generate_sql"]),
-            patch("mcp.tools.DuckDBConnector", return_value=mock_connector),
-        ):
+    def test_returns_string(self, sample_spec):
+        with patch("mcp.tools.propose_mart_from_request", return_value=sample_spec):
             result = run_propose_mart("Show me sales.", "/data/warehouse.db")
-
-        return result, patches, mock_connector
-
-    def test_returns_string(self, sample_intent, sample_tables, sample_spec):
-        result, _, _ = self._run(sample_intent, sample_tables, sample_spec)
         assert isinstance(result, str)
 
-    def test_parse_intent_called_with_user_request(self, sample_intent, sample_tables, sample_spec):
-        _, patches, _ = self._run(sample_intent, sample_tables, sample_spec)
-        patches["mcp.tools.parse_intent"].assert_called_once_with("Show me sales.")
+    def test_service_called_with_user_request_and_duckdb_reader(self, sample_spec):
+        with patch("mcp.tools.propose_mart_from_request", return_value=sample_spec) as mock_svc:
+            run_propose_mart("Show me sales.", "/data/warehouse.db")
+        args, _ = mock_svc.call_args
+        assert args[0] == "Show me sales."
+        assert isinstance(args[1], DuckDBSchemaReader)
 
-    def test_connector_opened_with_database_path(self, sample_intent, sample_tables, sample_spec):
-        _, _, mock_connector_cls = self._run(sample_intent, sample_tables, sample_spec)
-        # DuckDBConnector was instantiated with the right path and read_only=True
-        # (mock_connector_cls is the return_value of patched DuckDBConnector)
-
-    def test_read_tables_called_with_connection(self, sample_intent, sample_tables, sample_spec):
-        _, patches, _ = self._run(sample_intent, sample_tables, sample_spec)
-        patches["mcp.tools.read_tables"].assert_called_once()
-
-    def test_propose_mart_called_with_intent_and_tables(self, sample_intent, sample_tables, sample_spec):
-        _, patches, _ = self._run(sample_intent, sample_tables, sample_spec)
-        patches["mcp.tools._propose_mart"].assert_called_once_with(sample_intent, sample_tables)
-
-    def test_generate_sql_called_with_spec(self, sample_intent, sample_tables, sample_spec):
-        _, patches, _ = self._run(sample_intent, sample_tables, sample_spec)
-        # generate_sql receives a MartSpecification (the one returned by _propose_mart)
-        patches["mcp.tools.generate_sql"].assert_called_once()
-
-    def test_result_contains_mart_name(self, sample_intent, sample_tables, sample_spec):
-        result, _, _ = self._run(sample_intent, sample_tables, sample_spec)
+    def test_result_contains_mart_name(self, sample_spec):
+        with patch("mcp.tools.propose_mart_from_request", return_value=sample_spec):
+            result = run_propose_mart("Show me sales.", "/data/warehouse.db")
         assert "sales_mart" in result
 
-    def test_result_contains_sql(self, sample_intent, sample_tables, sample_spec):
-        result, _, _ = self._run(sample_intent, sample_tables, sample_spec)
+    def test_result_contains_sql(self, sample_spec):
+        with patch("mcp.tools.propose_mart_from_request", return_value=sample_spec):
+            result = run_propose_mart("Show me sales.", "/data/warehouse.db")
         assert "CREATE TABLE" in result
 
 
