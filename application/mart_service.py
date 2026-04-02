@@ -11,6 +11,7 @@ from __future__ import annotations
 import anthropic
 
 from intent.parser import parse_intent
+from intent.validator import validate_intent
 from mart_design.designer import propose_mart
 from mart_design.schema import MartSpecification
 from mart_design.sql_generator import generate_sql
@@ -54,6 +55,7 @@ def propose_mart_from_request(
         plain text, etc.).
     """
     intent = parse_intent(user_request, client=client)
+    validate_intent(intent)
 
     with DuckDBConnector(database_path, read_only=True) as conn:
         source_tables = read_tables(conn)
