@@ -1,18 +1,18 @@
-"""Pure pipeline handler functions exposed as MCP tools.
+"""MCP tool handlers — thin wrappers over the application service layer.
 
-This module contains no MCP framework imports so that every function can be
-unit-tested without a running MCP server.  ``mcp/server.py`` imports and
+This module contains no pipeline orchestration logic.  All business logic
+lives in ``application.mart_service``.  Functions here are responsible only
+for invoking the service and formatting the result for MCP consumers.
+
+Keeping this module free of MCP framework imports allows every function to
+be unit-tested without a running MCP server.  ``mcp/server.py`` imports and
 wraps these functions with the FastMCP decorator.
 """
 
 from __future__ import annotations
 
-from mart_design.designer import propose_mart as _propose_mart
+from application.mart_service import propose_mart_from_request
 from mart_design.schema import MartSpecification
-from mart_design.sql_generator import generate_sql
-from metadata.connector import DuckDBConnector
-from metadata.schema_reader import read_tables
-from intent.parser import parse_intent
 
 
 # ---------------------------------------------------------------------------
@@ -21,23 +21,18 @@ from intent.parser import parse_intent
 
 
 def run_propose_mart(user_request: str, database_path: str) -> str:
-    """Run the full data mart design pipeline and return a formatted report.
+    """Run the data mart design pipeline and return a formatted Markdown report.
 
-    Steps
-    -----
-    1. Parse ``user_request`` into a structured ``UserIntent`` via the LLM.
-    2. Open the DuckDB database at ``database_path`` and read table metadata.
-    3. Propose a ``MartSpecification`` (fact + dimension tables) via the LLM.
-    4. Generate ``CREATE TABLE`` DDL from the specification.
-    5. Return a Markdown-formatted report containing the design and DDL.
+    Delegates all orchestration to ``application.mart_service`` and formats
+    the resulting ``MartSpecification`` as Markdown for MCP consumers.
 
     Parameters
     ----------
     user_request:
-        Free-form natural language description of what the user wants to analyse.
+        Free-form natural language description of what the user wants to
+        analyse.
     database_path:
         Absolute or relative path to the DuckDB database file.
-        Pass ``":memory:"`` only for testing purposes.
 
     Returns
     -------
@@ -45,15 +40,7 @@ def run_propose_mart(user_request: str, database_path: str) -> str:
         A Markdown report with the mart name, fact/dimension table summaries,
         rationale, and ready-to-run ``CREATE TABLE`` SQL.
     """
-    intent = parse_intent(user_request)
-
-    with DuckDBConnector(database_path, read_only=True) as conn:
-        source_tables = read_tables(conn)
-
-    spec = _propose_mart(intent, source_tables)
-    sql = generate_sql(spec)
-    spec = spec.model_copy(update={"generated_sql": sql})
-
+    spec = propose_mart_from_request(user_request, database_path)
     return _format_response(spec)
 
 
