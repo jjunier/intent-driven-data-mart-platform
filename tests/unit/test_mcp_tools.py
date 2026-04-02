@@ -7,7 +7,7 @@ _format_response is tested directly against a fixture MartSpecification.
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import patch, ANY
 
 import pytest
 
@@ -20,6 +20,7 @@ from mart_design.schema import (
     MetricDefinition,
 )
 from mcp.tools import _format_response, run_propose_mart
+from metadata.reader import DuckDBSchemaReader
 from metadata.schema import SourceColumn, SourceTable
 
 
@@ -114,10 +115,12 @@ class TestRunProposeMart:
             result = run_propose_mart("Show me sales.", "/data/warehouse.db")
         assert isinstance(result, str)
 
-    def test_service_called_with_user_request_and_path(self, sample_spec):
+    def test_service_called_with_user_request_and_duckdb_reader(self, sample_spec):
         with patch("mcp.tools.propose_mart_from_request", return_value=sample_spec) as mock_svc:
             run_propose_mart("Show me sales.", "/data/warehouse.db")
-        mock_svc.assert_called_once_with("Show me sales.", "/data/warehouse.db")
+        args, _ = mock_svc.call_args
+        assert args[0] == "Show me sales."
+        assert isinstance(args[1], DuckDBSchemaReader)
 
     def test_result_contains_mart_name(self, sample_spec):
         with patch("mcp.tools.propose_mart_from_request", return_value=sample_spec):
