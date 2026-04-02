@@ -123,6 +123,7 @@ def _run_service(sample_intent, sample_tables, sample_spec):
             "application.mart_service.parse_intent",
             return_value=sample_intent,
         ) as mock_parse,
+        patch("application.mart_service.validate_intent") as mock_validate,
         patch(
             "application.mart_service.DuckDBConnector",
             return_value=mock_connector,
@@ -144,7 +145,16 @@ def _run_service(sample_intent, sample_tables, sample_spec):
             "Show me monthly sales by customer.", "/data/warehouse.db"
         )
 
-    return result, mock_parse, mock_connector_cls, mock_conn, mock_read, mock_propose, mock_gen_sql
+    return (
+        result,
+        mock_parse,
+        mock_validate,
+        mock_connector_cls,
+        mock_conn,
+        mock_read,
+        mock_propose,
+        mock_gen_sql,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -165,24 +175,30 @@ class TestProposeMartFromRequest:
         _, mock_parse, *_ = _run_service(sample_intent, sample_tables, sample_spec)
         mock_parse.assert_called_once_with("Show me monthly sales by customer.", client=None)
 
+    def test_validate_intent_called_with_parsed_intent(
+        self, sample_intent, sample_tables, sample_spec
+    ):
+        _, _, mock_validate, *_ = _run_service(sample_intent, sample_tables, sample_spec)
+        mock_validate.assert_called_once_with(sample_intent)
+
     def test_connector_opened_with_database_path_and_read_only(
         self, sample_intent, sample_tables, sample_spec
     ):
-        _, _, mock_connector_cls, *_ = _run_service(sample_intent, sample_tables, sample_spec)
+        _, _, _, mock_connector_cls, *_ = _run_service(sample_intent, sample_tables, sample_spec)
         mock_connector_cls.assert_called_once_with("/data/warehouse.db", read_only=True)
 
     def test_read_tables_called_with_connection(self, sample_intent, sample_tables, sample_spec):
-        _, _, _, mock_conn, mock_read, *_ = _run_service(sample_intent, sample_tables, sample_spec)
+        _, _, _, _, mock_conn, mock_read, *_ = _run_service(sample_intent, sample_tables, sample_spec)
         mock_read.assert_called_once_with(mock_conn)
 
     def test_propose_mart_called_with_intent_and_tables(
         self, sample_intent, sample_tables, sample_spec
     ):
-        _, _, _, _, _, mock_propose, _ = _run_service(sample_intent, sample_tables, sample_spec)
+        _, _, _, _, _, _, mock_propose, _ = _run_service(sample_intent, sample_tables, sample_spec)
         mock_propose.assert_called_once_with(sample_intent, sample_tables, client=None)
 
     def test_generate_sql_called_with_spec(self, sample_intent, sample_tables, sample_spec):
-        _, _, _, _, _, mock_propose, mock_gen_sql = _run_service(
+        _, _, _, _, _, _, mock_propose, mock_gen_sql = _run_service(
             sample_intent, sample_tables, sample_spec
         )
         called_spec = mock_gen_sql.call_args[0][0]
