@@ -26,6 +26,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "httpx>=0.27.0",
     "ruff>=0.4.0",
+    "pyyaml>=6.0.0",
 ]
 
 [build-system]
@@ -33,7 +34,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "application", "intent", "mart_design", "mcp", "metadata"]
+packages = ["app", "application", "dbt_codegen", "intent", "mart_design", "mcp", "metadata"]
 
 [tool.ruff]
 line-length = 100
