@@ -98,6 +98,7 @@ class TestDbtArtifactBundle:
         assert bundle.fact_models == {}
         assert bundle.dimension_models == {}
         assert bundle.schema_yml == ""
+        assert bundle.sources_yml == ""
 
     def test_all_files_includes_fact_under_facts_path(self):
         bundle = DbtArtifactBundle(fact_models={"fact_orders.sql": "select 1"})
@@ -124,6 +125,23 @@ class TestDbtArtifactBundle:
         files = bundle.all_files()
         assert files["models/marts/facts/fact_orders.sql"] == "select * from x"
 
+    def test_all_files_includes_sources_yml_at_models_root(self):
+        bundle = DbtArtifactBundle(sources_yml="version: 2\n")
+        files = bundle.all_files()
+        assert "models/sources.yml" in files
+
+    def test_all_files_omits_sources_yml_when_empty(self):
+        bundle = DbtArtifactBundle(sources_yml="")
+        files = bundle.all_files()
+        assert "models/sources.yml" not in files
+
+    def test_sources_yml_path_is_outside_marts_directory(self):
+        """sources.yml must be at models/ root, not inside models/marts/."""
+        bundle = DbtArtifactBundle(sources_yml="version: 2\n")
+        files = bundle.all_files()
+        assert "models/sources.yml" in files
+        assert "models/marts/sources.yml" not in files
+
 
 # ---------------------------------------------------------------------------
 # generate_dbt_artifacts service function
@@ -147,6 +165,10 @@ class TestGenerateDbtArtifacts:
         bundle = generate_dbt_artifacts(spec)
         assert bundle.schema_yml.strip() != ""
 
+    def test_sources_yml_is_non_empty(self, spec):
+        bundle = generate_dbt_artifacts(spec)
+        assert bundle.sources_yml.strip() != ""
+
     def test_generated_sql_on_spec_is_unchanged(self, spec):
         """generate_dbt_artifacts must not mutate the input spec."""
         original_sql = spec.generated_sql
@@ -156,6 +178,7 @@ class TestGenerateDbtArtifacts:
     def test_all_files_returns_expected_paths(self, spec):
         bundle = generate_dbt_artifacts(spec)
         files = bundle.all_files()
+        assert "models/sources.yml" in files
         assert "models/marts/facts/fact_orders.sql" in files
         assert "models/marts/dimensions/dim_customer.sql" in files
         assert "models/marts/schema.yml" in files

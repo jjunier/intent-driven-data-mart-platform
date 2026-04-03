@@ -14,10 +14,8 @@ MVP constraints (by design):
 
 from __future__ import annotations
 
+from dbt_codegen._constants import RAW_SCHEMA
 from mart_design.schema import DimensionDefinition, FactDefinition, MartSpecification
-
-# Fixed raw schema name for MVP.
-_RAW_SCHEMA = "raw"
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +39,7 @@ def generate_dimension_model(dim: DimensionDefinition) -> str:
     str
         Complete dbt model SQL file content.
     """
-    source_ref = f"{{{{ source('{_RAW_SCHEMA}', '{dim.source_table}') }}}}"
+    source_ref = f"{{{{ source('{RAW_SCHEMA}', '{dim.source_table}') }}}}"
 
     all_columns = [dim.key_column] + list(dim.attribute_columns)
     col_lines = _indent_columns(all_columns)
@@ -76,7 +74,7 @@ def generate_fact_model(fact: FactDefinition) -> str:
         Complete dbt model SQL file content.
     """
     primary_source = fact.source_tables[0]
-    source_ref = f"{{{{ source('{_RAW_SCHEMA}', '{primary_source}') }}}}"
+    source_ref = f"{{{{ source('{RAW_SCHEMA}', '{primary_source}') }}}}"
 
     # Dimension key columns (GROUP BY targets)
     dim_key_lines = _indent_columns(fact.dimension_keys)

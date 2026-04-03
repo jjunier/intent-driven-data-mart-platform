@@ -13,6 +13,7 @@ import anthropic
 from dbt_codegen.model_generator import generate_all_dimension_models, generate_all_fact_models
 from dbt_codegen.schema import DbtArtifactBundle
 from dbt_codegen.schema_yaml_generator import generate_schema_yml
+from dbt_codegen.sources_yaml_generator import generate_sources_yml
 from intent.parser import parse_intent
 from intent.validator import validate_intent
 from mart_design.designer import propose_mart
@@ -102,8 +103,10 @@ def generate_dbt_artifacts(spec: MartSpecification) -> DbtArtifactBundle:
     fact_models = generate_all_fact_models(spec)
     dimension_models = generate_all_dimension_models(spec)
     schema_yml = generate_schema_yml(spec)
+    sources_yml = generate_sources_yml(spec)
     return DbtArtifactBundle(
         fact_models=fact_models,
         dimension_models=dimension_models,
         schema_yml=schema_yml,
+        sources_yml=sources_yml,
     )
