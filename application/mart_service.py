@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import anthropic
 
+from dbt_codegen.model_generator import generate_all_dimension_models, generate_all_fact_models
+from dbt_codegen.schema import DbtArtifactBundle
+from dbt_codegen.schema_yaml_generator import generate_schema_yml
 from intent.parser import parse_intent
 from intent.validator import validate_intent
 from mart_design.designer import propose_mart
@@ -66,3 +69,41 @@ def propose_mart_from_request(
     validate_mart_spec(spec)
     sql = generate_sql(spec)
     return spec.model_copy(update={"generated_sql": sql})
+
+
+def generate_dbt_artifacts(spec: MartSpecification) -> DbtArtifactBundle:
+    """Generate dbt project files from a validated ``MartSpecification``.
+
+    This function is independent of ``propose_mart_from_request``.  Callers
+    that already hold a ``MartSpecification`` can invoke this directly.
+
+    The returned ``DbtArtifactBundle`` is a separate artifact from
+    ``spec.generated_sql`` (which holds raw DDL for direct execution).
+
+    MVP constraints
+    ---------------
+    - ``raw_schema`` is fixed to ``"raw"``.
+    - Fact tables with multiple source tables use only the first entry.
+    - All models are materialised as ``table``.
+
+    Parameters
+    ----------
+    spec:
+        A fully populated ``MartSpecification``, typically the return value
+        of ``propose_mart_from_request``.
+
+    Returns
+    -------
+    DbtArtifactBundle
+        Contains fact model SQL files, dimension model SQL files, and the
+        ``schema.yml`` content.  Use ``bundle.all_files()`` to obtain a flat
+        ``{relative_path: content}`` mapping ready for writing to disk.
+    """
+    fact_models = generate_all_fact_models(spec)
+    dimension_models = generate_all_dimension_models(spec)
+    schema_yml = generate_schema_yml(spec)
+    return DbtArtifactBundle(
+        fact_models=fact_models,
+        dimension_models=dimension_models,
+        schema_yml=schema_yml,
+    )
