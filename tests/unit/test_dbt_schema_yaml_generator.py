@@ -10,7 +10,11 @@ from __future__ import annotations
 import yaml
 import pytest
 
-from dbt_codegen.schema_yaml_generator import generate_schema_yml, _quote
+from dbt_codegen.schema_yaml_generator import (
+    generate_schema_yml,
+    _quote,
+    _should_add_accepted_values,
+)
 from intent.schema import UserIntent
 from mart_design.schema import (
     AggregationType,
@@ -263,3 +267,279 @@ class TestSchemaYmlEdgeCases:
         names = [m["name"] for m in parsed["models"]]
         assert "dim_customer" in names
         assert "dim_product" in names
+
+
+# ---------------------------------------------------------------------------
+# relationships test
+# ---------------------------------------------------------------------------
+
+
+class TestRelationshipsTest:
+    def _get_fact_col(self, spec, col_name: str) -> dict:
+        parsed = yaml.safe_load(generate_schema_yml(spec))
+        fact_model = next(m for m in parsed["models"] if m["name"] == "fact_orders")
+        return next(c for c in fact_model["columns"] if c["name"] == col_name)
+
+    def test_dimension_key_has_relationships_test(self, spec):
+        col = self._get_fact_col(spec, "customer_id")
+        test_names = [
+            t if isinstance(t, str) else list(t.keys())[0]
+            for t in col["tests"]
+        ]
+        assert "relationships" in test_names
+
+    def test_relationships_to_points_to_dim_model(self, spec):
+        col = self._get_fact_col(spec, "customer_id")
+        rel_test = next(
+            t for t in col["tests"]
+            if isinstance(t, dict) and "relationships" in t
+        )
+        assert "dim_customer" in rel_test["relationships"]["to"]
+
+    def test_relationships_field_matches_dim_key_column(self, spec):
+        col = self._get_fact_col(spec, "customer_id")
+        rel_test = next(
+            t for t in col["tests"]
+            if isinstance(t, dict) and "relationships" in t
+        )
+        assert rel_test["relationships"]["field"] == "customer_id"
+
+    def test_not_null_still_present_alongside_relationships(self, spec):
+        col = self._get_fact_col(spec, "customer_id")
+        assert "not_null" in col["tests"]
+
+    def test_no_relationships_when_dim_key_not_matched(self):
+        """dimension_key with no corresponding DimensionDefinition → no relationships test."""
+        intent = UserIntent(
+            raw_input="x",
+            subject_area="sales",
+            required_metrics=["cnt"],
+            required_dimensions=["unknown"],
+        )
+        fact = FactDefinition(
+            name="fact_orders",
+            source_tables=["orders"],
+            metrics=[
+                MetricDefinition(
+                    name="cnt",
+                    expression="COUNT(*)",
+                    aggregation=AggregationType.count,
+                    source_column="id",
+                )
+            ],
+            dimension_keys=["orphan_key"],  # no matching dim
+            grain="one row per event",
+        )
+        spec = MartSpecification(
+            mart_name="m",
+            description="",
+            intent=intent,
+            source_tables=[],
+            fact_tables=[fact],
+            dimension_tables=[],  # empty — no dim to match
+        )
+        parsed = yaml.safe_load(generate_schema_yml(spec))
+        fact_model = next(m for m in parsed["models"] if m["name"] == "fact_orders")
+        col = next(c for c in fact_model["columns"] if c["name"] == "orphan_key")
+        test_names = [
+            t if isinstance(t, str) else list(t.keys())[0]
+            for t in col["tests"]
+        ]
+        assert "relationships" not in test_names
+        assert "not_null" in test_names
+
+    def test_output_with_relationships_is_parseable_yaml(self, spec):
+        yml = generate_schema_yml(spec)
+        parsed = yaml.safe_load(yml)
+        assert parsed is not None
+
+
+# ---------------------------------------------------------------------------
+# _should_add_accepted_values
+# ---------------------------------------------------------------------------
+
+
+class TestShouldAddAcceptedValues:
+    def _make_col(self, data_type: str, sample_values: list[str]) -> SourceColumn:
+        return SourceColumn(
+            name="status",
+            data_type=data_type,
+            sample_values=sample_values,
+        )
+
+    def test_returns_true_for_varchar_with_few_samples(self):
+        col = self._make_col("VARCHAR", ["active", "inactive"])
+        assert _should_add_accepted_values(col) is True
+
+    def test_returns_true_for_text_type(self):
+        col = self._make_col("TEXT", ["a", "b", "c"])
+        assert _should_add_accepted_values(col) is True
+
+    def test_returns_false_for_empty_sample_values(self):
+        col = self._make_col("VARCHAR", [])
+        assert _should_add_accepted_values(col) is False
+
+    def test_returns_false_when_more_than_ten_samples(self):
+        col = self._make_col("VARCHAR", [str(i) for i in range(11)])
+        assert _should_add_accepted_values(col) is False
+
+    def test_returns_true_for_exactly_ten_samples(self):
+        col = self._make_col("VARCHAR", [str(i) for i in range(10)])
+        assert _should_add_accepted_values(col) is True
+
+    def test_returns_false_for_integer_type(self):
+        col = self._make_col("INTEGER", ["1", "2"])
+        assert _should_add_accepted_values(col) is False
+
+    def test_returns_false_for_double_type(self):
+        col = self._make_col("DOUBLE", ["1.0", "2.0"])
+        assert _should_add_accepted_values(col) is False
+
+    def test_returns_false_for_bigint_type(self):
+        col = self._make_col("BIGINT", ["100"])
+        assert _should_add_accepted_values(col) is False
+
+    def test_case_insensitive_data_type_match(self):
+        col = self._make_col("varchar", ["a", "b"])
+        assert _should_add_accepted_values(col) is True
+
+
+# ---------------------------------------------------------------------------
+# accepted_values test in schema.yml output
+# ---------------------------------------------------------------------------
+
+
+class TestAcceptedValuesInSchemaYml:
+    def _make_spec_with_sample_values(
+        self, data_type: str, sample_values: list[str]
+    ) -> MartSpecification:
+        intent = UserIntent(
+            raw_input="x",
+            subject_area="sales",
+            required_metrics=["total_revenue"],
+            required_dimensions=["customer"],
+        )
+        return MartSpecification(
+            mart_name="m",
+            description="",
+            intent=intent,
+            source_tables=[
+                SourceTable(
+                    name="customers",
+                    schema_name="main",
+                    columns=[
+                        SourceColumn(
+                            name="customer_id",
+                            data_type="INTEGER",
+                            is_primary_key=True,
+                        ),
+                        SourceColumn(
+                            name="status",
+                            data_type=data_type,
+                            sample_values=sample_values,
+                        ),
+                    ],
+                )
+            ],
+            fact_tables=[],
+            dimension_tables=[
+                DimensionDefinition(
+                    name="dim_customer",
+                    source_table="customers",
+                    key_column="customer_id",
+                    attribute_columns=["status"],
+                )
+            ],
+        )
+
+    def _get_status_col(self, spec: MartSpecification) -> dict:
+        parsed = yaml.safe_load(generate_schema_yml(spec))
+        dim_model = next(m for m in parsed["models"] if m["name"] == "dim_customer")
+        return next(c for c in dim_model["columns"] if c["name"] == "status")
+
+    def test_accepted_values_added_when_conditions_met(self):
+        spec = self._make_spec_with_sample_values("VARCHAR", ["active", "inactive"])
+        col = self._get_status_col(spec)
+        assert col.get("tests") is not None
+        test_names = [
+            t if isinstance(t, str) else list(t.keys())[0]
+            for t in col["tests"]
+        ]
+        assert "accepted_values" in test_names
+
+    def test_accepted_values_contains_sample_values(self):
+        spec = self._make_spec_with_sample_values("VARCHAR", ["active", "inactive"])
+        col = self._get_status_col(spec)
+        av_test = next(
+            t for t in col["tests"]
+            if isinstance(t, dict) and "accepted_values" in t
+        )
+        assert set(av_test["accepted_values"]["values"]) == {"active", "inactive"}
+
+    def test_no_accepted_values_when_sample_values_empty(self):
+        spec = self._make_spec_with_sample_values("VARCHAR", [])
+        col = self._get_status_col(spec)
+        assert col.get("tests") is None
+
+    def test_no_accepted_values_for_integer_column(self):
+        spec = self._make_spec_with_sample_values("INTEGER", ["1", "2"])
+        col = self._get_status_col(spec)
+        assert col.get("tests") is None
+
+    def test_no_accepted_values_when_too_many_samples(self):
+        spec = self._make_spec_with_sample_values(
+            "VARCHAR", [str(i) for i in range(11)]
+        )
+        col = self._get_status_col(spec)
+        assert col.get("tests") is None
+
+    def test_accepted_values_output_is_parseable_yaml(self):
+        spec = self._make_spec_with_sample_values("VARCHAR", ["a", "b", "c"])
+        yml = generate_schema_yml(spec)
+        parsed = yaml.safe_load(yml)
+        assert parsed is not None
+
+    def test_key_column_never_gets_accepted_values(self):
+        """PK columns must not have accepted_values even if source has sample_values."""
+        intent = UserIntent(
+            raw_input="x",
+            subject_area="sales",
+            required_metrics=["m"],
+            required_dimensions=["d"],
+        )
+        spec = MartSpecification(
+            mart_name="m",
+            description="",
+            intent=intent,
+            source_tables=[
+                SourceTable(
+                    name="customers",
+                    schema_name="main",
+                    columns=[
+                        SourceColumn(
+                            name="customer_id",
+                            data_type="VARCHAR",
+                            is_primary_key=True,
+                            sample_values=["c1", "c2", "c3"],
+                        ),
+                    ],
+                )
+            ],
+            fact_tables=[],
+            dimension_tables=[
+                DimensionDefinition(
+                    name="dim_customer",
+                    source_table="customers",
+                    key_column="customer_id",
+                    attribute_columns=[],
+                )
+            ],
+        )
+        parsed = yaml.safe_load(generate_schema_yml(spec))
+        dim_model = next(m for m in parsed["models"] if m["name"] == "dim_customer")
+        pk_col = next(c for c in dim_model["columns"] if c["name"] == "customer_id")
+        test_names = [
+            t if isinstance(t, str) else list(t.keys())[0]
+            for t in pk_col["tests"]
+        ]
+        assert "accepted_values" not in test_names
