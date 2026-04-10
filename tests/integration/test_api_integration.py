@@ -4,12 +4,21 @@ Full path under test: HTTP request -> FastAPI routing -> DuckDBSchemaReader
 (real DuckDB) -> service pipeline (validators, generators) -> HTTP response.
 
 What runs real:
-    FastAPI routing, DTO conversion, DuckDBSchemaReader, validate_intent,
-    validate_mart_spec, generate_sql, dbt artifact generators
+    FastAPI routing, DTO conversion, _build_reader, DuckDBSchemaReader,
+    validate_intent, validate_mart_spec, generate_sql, dbt artifact generators
 
 What is mocked:
     parse_intent()  -> fixture_intent
     propose_mart()  -> build_spec_from_tables side_effect (uses actual source_tables)
+
+Request body format (Stage 11+):
+    {
+        "user_request": "...",
+        "reader_config": {
+            "reader_type": "duckdb",
+            "database_path": "<path>"
+        }
+    }
 """
 from __future__ import annotations
 
@@ -40,7 +49,7 @@ class TestMartProposalApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_MARTS,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert response.status_code == 200
 
@@ -49,7 +58,7 @@ class TestMartProposalApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_MARTS,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert response.json()["mart_name"] == "sales_mart"
 
@@ -58,7 +67,7 @@ class TestMartProposalApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_MARTS,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert response.json()["generated_sql"] != ""
 
@@ -67,7 +76,7 @@ class TestMartProposalApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_MARTS,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert len(response.json()["fact_tables"]) >= 1
 
@@ -76,7 +85,7 @@ class TestMartProposalApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_MARTS,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert len(response.json()["dimension_tables"]) >= 1
 
@@ -85,7 +94,7 @@ class TestMartProposalApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_MARTS,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         body = response.json()
         assert "intent" not in body
@@ -99,7 +108,7 @@ class TestMartWithDbtApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_DBT,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert response.status_code == 200
 
@@ -108,7 +117,7 @@ class TestMartWithDbtApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_DBT,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert "mart" in response.json()
         assert response.json()["mart"]["mart_name"] == "sales_mart"
@@ -118,7 +127,7 @@ class TestMartWithDbtApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_DBT,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         assert "dbt_artifacts" in response.json()
         assert "files" in response.json()["dbt_artifacts"]
@@ -128,7 +137,7 @@ class TestMartWithDbtApiIntegration:
              patch(_PATCH_PROPOSE, side_effect=build_spec_from_tables):
             response = api_client.post(
                 _URL_DBT,
-                json={"user_request": "sales by customer", "database_path": duckdb_path},
+                json={"user_request": "sales by customer", "reader_config": {"reader_type": "duckdb", "database_path": duckdb_path}},
             )
         files = response.json()["dbt_artifacts"]["files"]
         assert "models/marts/facts/fact_orders.sql" in files
