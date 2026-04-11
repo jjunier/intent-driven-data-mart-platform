@@ -158,6 +158,29 @@ def _bigquery_body(
     }
 
 
+# Convenience request body helpers
+def _duckdb_body(user_request: str = "sales by customer", path: str = ":memory:") -> dict:
+    return {
+        "user_request": user_request,
+        "reader_config": {"reader_type": "duckdb", "database_path": path},
+    }
+
+
+def _bigquery_body(
+    user_request: str = "sales by customer",
+    project_id: str = "my-project",
+    dataset_id: str = "my_dataset",
+) -> dict:
+    return {
+        "user_request": user_request,
+        "reader_config": {
+            "reader_type": "bigquery",
+            "project_id": project_id,
+            "dataset_id": dataset_id,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # GET /health
 # ---------------------------------------------------------------------------
