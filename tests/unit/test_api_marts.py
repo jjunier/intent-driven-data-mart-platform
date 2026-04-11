@@ -128,7 +128,34 @@ def sample_bundle() -> DbtArtifactBundle:
 
 @pytest.fixture()
 def client() -> TestClient:
-    return TestClient(app)
+    # raise_server_exceptions=False: allows the global Exception catch-all handler
+    # (registered in app.main via add_exception_handler) to return a 500 JSON
+    # response instead of re-raising through TestClient's transport layer.
+    # Domain-specific handlers (400, 422, 503) are unaffected by this flag.
+    return TestClient(app, raise_server_exceptions=False)
+
+
+# Convenience request body helpers
+def _duckdb_body(user_request: str = "sales by customer", path: str = ":memory:") -> dict:
+    return {
+        "user_request": user_request,
+        "reader_config": {"reader_type": "duckdb", "database_path": path},
+    }
+
+
+def _bigquery_body(
+    user_request: str = "sales by customer",
+    project_id: str = "my-project",
+    dataset_id: str = "my_dataset",
+) -> dict:
+    return {
+        "user_request": user_request,
+        "reader_config": {
+            "reader_type": "bigquery",
+            "project_id": project_id,
+            "dataset_id": dataset_id,
+        },
+    }
 
 
 # Convenience request body helpers
