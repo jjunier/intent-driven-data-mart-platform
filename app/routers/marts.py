@@ -29,14 +29,12 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Union
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from application.mart_service import generate_dbt_artifacts, propose_mart_from_request
 from dbt_codegen.schema import DbtArtifactBundle
-from intent.validator import IntentValidationError
 from mart_design.schema import MartSpecification
-from mart_design.validator import MartSpecValidationError
 from metadata.reader import DuckDBSchemaReader, SchemaReader
 
 router = APIRouter(prefix="/api/v1", tags=["marts"])
@@ -250,16 +248,15 @@ def propose_mart_endpoint(request: MartProposalRequest) -> MartProposalResponse:
     3. Proposes a Kimball star-schema mart design (LLM).
     4. Generates ``CREATE TABLE`` DDL.
 
-    Raises ``400`` for invalid intent or unresolvable column references.
-    Raises ``500`` for unexpected errors.
+    Domain exceptions propagate to the global exception handlers registered
+    in ``app.main``:
+
+    - ``IntentValidationError`` / ``MartSpecValidationError`` → 400
+    - ``ImportError`` (optional dependency missing) → 503
+    - All other exceptions → 500
     """
     schema_reader = _build_reader(request.reader_config)
-    try:
-        spec = propose_mart_from_request(request.user_request, schema_reader)
-    except (IntentValidationError, MartSpecValidationError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    spec = propose_mart_from_request(request.user_request, schema_reader)
     return _to_mart_response(spec)
 
 
@@ -276,17 +273,16 @@ def propose_mart_with_dbt_endpoint(request: MartProposalRequest) -> MartWithDbtR
     ``dbt_artifacts`` object containing ready-to-use dbt project files
     (model SQL, ``schema.yml``, ``sources.yml``).
 
-    Raises ``400`` for invalid intent or unresolvable column references.
-    Raises ``500`` for unexpected errors.
+    Domain exceptions propagate to the global exception handlers registered
+    in ``app.main``:
+
+    - ``IntentValidationError`` / ``MartSpecValidationError`` → 400
+    - ``ImportError`` (optional dependency missing) → 503
+    - All other exceptions → 500
     """
     schema_reader = _build_reader(request.reader_config)
-    try:
-        spec = propose_mart_from_request(request.user_request, schema_reader)
-        bundle = generate_dbt_artifacts(spec)
-    except (IntentValidationError, MartSpecValidationError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    spec = propose_mart_from_request(request.user_request, schema_reader)
+    bundle = generate_dbt_artifacts(spec)
     return MartWithDbtResponse(
         mart=_to_mart_response(spec),
         dbt_artifacts=_to_dbt_response(bundle),
