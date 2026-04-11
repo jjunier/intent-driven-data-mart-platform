@@ -128,7 +128,11 @@ def sample_bundle() -> DbtArtifactBundle:
 
 @pytest.fixture()
 def client() -> TestClient:
-    return TestClient(app)
+    # raise_server_exceptions=False: allows the global Exception catch-all handler
+    # (registered in app.main via add_exception_handler) to return a 500 JSON
+    # response instead of re-raising through TestClient's transport layer.
+    # Domain-specific handlers (400, 422, 503) are unaffected by this flag.
+    return TestClient(app, raise_server_exceptions=False)
 
 
 # Convenience request body helpers
